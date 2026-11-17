@@ -1,6 +1,6 @@
 # objects-detector
 
-Сервис обнаружения объектов голосового ассистента для людей с нарушениями зрения. Принимает снимок с камеры телефона и возвращает найденные объекты: класс из общего словаря `configs/vocabulary.yaml`, рамку, направление (слева, впереди, справа) и расстояние (близко, далеко). Сервис не описывает сцену словами и не хранит снимки: описание строит Шлюз (`assistant-low-vision-platform`), он же - единственный потребитель API. Сейчас сервис работает на бэкенде `fake`; настоящие модели добавляются следующим шагом. Требования - в [docs/spec.md](docs/spec.md).
+Сервис обнаружения объектов голосового ассистента для людей с нарушениями зрения. Принимает снимок с камеры телефона и возвращает найденные объекты: класс из общего словаря `configs/vocabulary.yaml`, рамку, направление (слева, впереди, справа) и расстояние (близко, далеко). Сервис не описывает сцену словами и не хранит снимки: описание строит Шлюз (`assistant-low-vision-platform`), он же - единственный потребитель API. По умолчанию сервис работает на бэкенде `fake`, настоящие модели (YOLO, RT-DETR, RF-DETR, Grounding DINO) включаются настройками. Требования - в [docs/spec.md](docs/spec.md).
 
 ## Назначение
 
@@ -148,7 +148,7 @@ curl -H "Authorization: Bearer $AUTH_TOKEN" -H "X-Request-ID: 3f2c1ab0" \
 | `MODEL_BACKEND` | `fake` | бэкенд из реестра (раздел «Бэкенды и модели») |
 | `MODEL_NAME` | - | модель бэкенда; не задана - модель бэкенда по умолчанию |
 | `TARGET_PLATFORM` | `cpu` | `cpu` или `cuda` |
-| `ARTIFACTS_PATH` | - | локальные веса; не задан - веса скачиваются в кэш |
+| `ARTIFACTS_PATH` | - | каталог весов; не задан - `~/.cache/objects-detector`; недостающие веса скачиваются туда |
 | `FAKE_LATENCY_MS` | `0` | время инференса, которое изображает `fake`, мс на вызов |
 | `AUTH_TOKEN` | - | Bearer-токен; не задан - аутентификация выключена |
 | `WORKERS` | `1` | потоков инференса |
@@ -158,20 +158,41 @@ curl -H "Authorization: Bearer $AUTH_TOKEN" -H "X-Request-ID: 3f2c1ab0" \
 | `LOG_DIAGNOSE` | `False` | значения переменных в трейсбеках; только для отладки - в логи попадут данные запросов и токены |
 | `VOCABULARY_PATH` | `configs/vocabulary.yaml` | словарь классов; относительный путь - от корня сервиса |
 | `MAX_IMAGE_MB` | `5` | наибольший снимок `/v1/detect`, МБ (1 МБ = 1 048 576 байт) |
+| `ONNX_TENSORRT` | `False` | бэкенд `onnx` на `cuda`: сначала пробовать TensorRT; первый старт строит движок несколько минут |
 
-Пороги моделей и эвристик - не переменные окружения, а константы в `app/core/config/constants.py`: `DETECTION_SETTINGS` (порог `conf` и `max_objects` по умолчанию, `imgsz`, лимит пикселей) и `GEOMETRY_SETTINGS` (границы направления, пороги расстояния, в том числе для отдельных классов). Общие переменные - в `app/core/config/config.py` (одинаков во всех сервисах ИИ), переменные детектора - в `app/core/config/service.py`.
+Пороги моделей и эвристик - не переменные окружения, а константы в `app/core/config/constants.py`: `DETECTION_SETTINGS` (порог `conf` и `max_objects` по умолчанию, `imgsz`, лимит пикселей, цвет полей letterbox, IoU для NMS, `text_threshold` Grounding DINO) и `GEOMETRY_SETTINGS` (границы направления, пороги расстояния, в том числе для отдельных классов). Общие переменные - в `app/core/config/config.py` (одинаков во всех сервисах ИИ), переменные детектора - в `app/core/config/service.py`.
 
 ## Бэкенды и модели
 
 Бэкенд выбирается `MODEL_BACKEND`. Реестр (`app/core/backends/registry.py`) импортирует модуль только выбранного бэкенда, поэтому библиотеки настоящих моделей - необязательные extras: без них сервис устанавливается и проходит быстрые тесты. Неизвестный бэкенд, неизвестная модель или бэкенд без своего extra останавливают старт с понятным сообщением, например `Backend 'ultralytics' requires the 'ultralytics' extra`.
 
-| `MODEL_BACKEND` | Extra | Модели | Состояние |
-| --- | --- | --- | --- |
-| `fake` | - | `fake`: детерминированный ответ без весов и видеокарты | есть |
-| `ultralytics` | `ultralytics` | YOLO11, YOLO26, RT-DETR, YOLO-World, YOLOE | будет |
-| `rfdetr` | `rfdetr` | RF-DETR | будет |
-| `onnx` | `onnx` | экспортированные YOLO и RT-DETR | будет |
-| `grounding_dino` | `grounding-dino` | Grounding DINO | будет |
+| `MODEL_BACKEND` | Extra | `MODEL_NAME` | По умолчанию | Вход |
+| --- | --- | --- | --- | --- |
+| `fake` | - | `fake`: детерминированный ответ без весов и видеокарты | `fake` | - |
+| `ultralytics` | `ultralytics` | YOLO11 `yolo11{n,s,m,l,x}`, YOLO26 `yolo26{n,s,m,l,x}`, RT-DETR `rtdetr-{l,x}`; с открытым словарём YOLO-World `yolov8{s,m,l,x}-world`, `yolov8{s,m,l,x}-worldv2` и YOLOE `yoloe-v8{s,m,l}-seg`, `yoloe-11{s,m,l}-seg`, `yoloe-26{n,s,m,l,x}-seg` | `yolo11n` | letterbox до `imgsz` (640) |
+| `rfdetr` | `rfdetr` | RF-DETR `rfdetr-{nano,small,medium,large}` | `rfdetr-nano` | letterbox до разрешения модели (nano - 384, small - 512, medium - 576, large - 704) |
+| `onnx` | `onnx` (CPU) или профиль `gpu` | экспорты с Hugging Face `rfdetr-nano`, `rtdetr-r18`, `rtdetrv2-r18`; любой свой экспорт YOLO или RT-DETR - файл `<ARTIFACTS_PATH>/<MODEL_NAME>.onnx` | `rfdetr-nano` | letterbox до входа модели: фиксированного в графе, иначе из `preprocessor_config.json`, иначе `imgsz` |
+| `grounding_dino` | `grounding-dino` | Grounding DINO `grounding-dino-tiny`, `grounding-dino-base` | `grounding-dino-tiny` | своя предобработка модели: короткая сторона 800 |
+
+Как бэкенды выполняют DET-5 и DET-6:
+
+- снимок декодируется в памяти и вписывается в квадратный вход модели с серыми полями (letterbox, `app/core/detection/letterbox.py`): пропорции сохраняются, размер входа один для всех снимков, поэтому граф модели компилируется один раз; рамки возвращаются в координаты исходного кадра;
+- на `TARGET_PLATFORM=cuda` модели работают в FP16: `ultralytics` - `quantize=16`, `rfdetr` - снимок весов в `float16`, `grounding_dino` - `autocast`, `onnx` - файл `model_fp16.onnx` известного экспорта; `/v1/info` показывает это в `params.half`;
+- модели с открытым словарём (YOLO-World, YOLOE, Grounding DINO) получают классы из `prompts` словаря один раз при старте; у них `unsupported_classes` пуст;
+- модели с закрытым словарём (COCO) находят только классы COCO: `door`, `stairs`, `scooter`, `crosswalk`, `pole`, `barrier`, `wardrobe`, `window`, `trash_can` попадают в `params.unsupported_classes`;
+- прогрев - 3 холостых вызова на сером кадре 640x480 до того, как `/health` ответит `ok`.
+
+`onnx` работает на onnxruntime без PyTorch: на CPU - `CPUExecutionProvider`, на CUDA - `CUDAExecutionProvider` из `onnxruntime-gpu` профиля `gpu`, с `ONNX_TENSORRT=true` первым пробуется TensorRT (движок строится при первом старте несколько минут и кэшируется в `<ARTIFACTS_PATH>/tensorrt`). Формат выхода бэкенд определяет сам: `logits` и `pred_boxes` экспортов transformers (RF-DETR, RT-DETR), один выход экспорта ultralytics - YOLO без NMS (YOLO26, YOLOv10), сырая голова YOLO (NMS в бэкенде, IoU 0.7) или RT-DETR. Имена классов берутся из метаданных экспорта ultralytics, из `config.json` рядом с известным экспортом, иначе - классы COCO по порядку. Свой экспорт из ultralytics: `yolo export model=yolo11n.pt format=onnx imgsz=640`, файл кладётся в `ARTIFACTS_PATH` как `yolo11n.onnx`, а `MODEL_NAME=yolo11n`.
+
+Веса не входят в образы. Бэкенд ищет их в `ARTIFACTS_PATH`, а если `ARTIFACTS_PATH` не задан - в `~/.cache/objects-detector` (`$XDG_CACHE_HOME/objects-detector`). Недостающее скачивается туда при старте; известные экспорты ONNX и Grounding DINO закреплены по коммиту репозитория на Hugging Face. Скачать веса заранее, без загрузки модели в память, для старта без сети:
+
+```bash
+MODEL_BACKEND=onnx MODEL_NAME=rfdetr-nano ARTIFACTS_PATH=./model uv run python -m scripts.fetch_weights
+```
+
+Скрипт печатает `onnx/rfdetr-nano<TAB><каталог весов>`; в развёртывании его запускает `deployments/fetch-weights.sh` в образе сервиса. Модели ultralytics с открытым словарём он строит один раз: их текстовый кодировщик (CLIP или MobileCLIP) выбирает сам чекпойнт.
+
+Библиотека ultralytics запускается с `YOLO_AUTOINSTALL=False` и выключенной аналитикой: сервис не доустанавливает пакеты на ходу и ничего не отправляет о запросах.
 
 На `fake` сервис пишет предупреждение при старте, а `/v1/info` показывает `backend: fake`, поэтому подмена модели в замерах сразу видна.
 
@@ -183,20 +204,24 @@ curl -H "Authorization: Bearer $AUTH_TOKEN" -H "X-Request-ID: 3f2c1ab0" \
 | 1 | стол впереди, диван слева, стул справа - всё далеко; `potted plant` вне словаря отбрасывается | `passive.clear` |
 | 2 | человек слева близко, машина справа далеко, светофор впереди, собака с уверенностью 0.31 (ниже порога по умолчанию) | без предупреждения уровня `danger` |
 
-Лицензии проверены по первоисточникам 2026-11-02 (файлы `LICENSE` и README репозиториев).
+Лицензии проверены по первоисточникам (файлы `LICENSE`, README и карточки моделей на Hugging Face): библиотеки - 2026-11-02, модели и экспорты бэкендов - 2026-11-17.
 
 | Модель | Лицензия | Коммерческое использование |
 | --- | --- | --- |
 | `fake` (код сервиса, без весов) | Apache-2.0 | да |
 | YOLO11, YOLO26, RT-DETR, YOLO-World, YOLOE в `ultralytics` (код и веса) | AGPL-3.0 | только с открытием кода сервиса по AGPL или с коммерческой лицензией Ultralytics Enterprise |
+| CLIP в форке Ultralytics (`ultralytics/CLIP`, токенизатор YOLO-World и YOLOE, extra `ultralytics`) | AGPL-3.0 | как у `ultralytics` |
 | RF-DETR Nano, Small, Medium, Large и RF-DETR-Seg всех размеров (`rfdetr`) | Apache-2.0 | да |
-| RF-DETR XL, 2XL, Atto, Femto, Pico (`rfdetr[plus]`) | Roboflow Platform Model License 1.0 | на платформе Roboflow; своё размещение - только с Enterprise-лицензией Roboflow |
+| RF-DETR XL, 2XL, Atto, Femto, Pico (`rfdetr[plus]`, бэкенд их не подключает) | Roboflow Platform Model License 1.0 | на платформе Roboflow; своё размещение - только с Enterprise-лицензией Roboflow |
+| RF-DETR Nano в ONNX (`onnx-community/rfdetr_nano-ONNX`, `onnx`/`rfdetr-nano`) | Apache-2.0 | да |
+| RT-DETR R18 и RT-DETRv2 R18 в ONNX (`onnx-community/rtdetr_r18vd`, `onnx-community/rtdetr_v2_r18vd-ONNX` из `PekingU/rtdetr_r18vd`, `PekingU/rtdetr_v2_r18vd`; `onnx`/`rtdetr-r18`, `rtdetrv2-r18`) | Apache-2.0 | да |
 | RT-DETR, RT-DETRv2 из репозитория авторов (`lyuwenyu/RT-DETR`), экспорт в ONNX | Apache-2.0 | да |
 | YOLO, экспортированные в ONNX из `ultralytics` | AGPL-3.0, как исходные веса | как у `ultralytics` |
 | ONNX Runtime (библиотека бэкенда `onnx`) | MIT | да |
-| Grounding DINO (`IDEA-Research/GroundingDINO`, `transformers`) | Apache-2.0 | да |
+| Grounding DINO Tiny и Base (`IDEA-Research/GroundingDINO`, `IDEA-Research/grounding-dino-{tiny,base}`, `transformers`) | Apache-2.0 | да |
+| PyTorch, torchvision (extras `ultralytics`, `rfdetr`, `grounding-dino`) | BSD-3-Clause | да |
 
-Бэкенды под AGPL и GPL - необязательные extras (NFR-13): `rfdetr` и `onnx` с моделями под Apache-2.0 работают без них.
+Бэкенды под AGPL и GPL - необязательные extras (NFR-13): `rfdetr` и `onnx` с моделями под Apache-2.0 работают без них. В опубликованные образы входит код всех бэкендов, включая AGPL (исходники открыты); веса в образы не входят.
 
 ## Запуск
 
@@ -216,7 +241,7 @@ curl http://localhost:8101/health
 docker compose up -d --build
 ```
 
-Аргументы сборки берутся из окружения: `GIT_SHA=$(git rev-parse --short HEAD)` попадает в `/v1/info`, `EXTRAS` задаёт extras образа (по умолчанию профиль `cpu` или `gpu` и все бэкенды; `EXTRAS=""` - лёгкий образ только с `fake`).
+Аргументы сборки берутся из окружения: `GIT_SHA=$(git rev-parse --short HEAD)` попадает в `/v1/info`, `EXTRAS` задаёт extras образа. По умолчанию - профиль и все бэкенды: в `Dockerfile.cpu` - `cpu ultralytics rfdetr onnx grounding-dino`, в `Dockerfile` - `gpu ultralytics rfdetr grounding-dino` (`onnx` там берёт `onnxruntime-gpu` профиля). `EXTRAS=""` - лёгкий образ только с `fake` для сквозной проверки. Образ на CPU со всеми бэкендами - около 3,4 ГБ на диске (766 МБ сжатых слоёв), сборка без кэша - около 7 минут.
 
 Локально:
 
@@ -226,7 +251,9 @@ uv run fastapi dev app/main.py
 uv run pytest -q -m "not model"
 ```
 
-Тесты с маркером `model` нужны весам и в быстрый прогон не входят. CI (GitHub Actions) прогоняет быстрые тесты на каждый пуш и PR, а на пуш в `dev`, `main` и тег `v*` публикует образы в `ghcr.io/nikarpoff/objects-detector` с тегами `latest` (ветка `main`), `sha-<7>` и `v<semver>` и суффиксом варианта: `latest-cpu`, `v0.1.0-cuda`. На `dev` собирается только `-cpu`.
+Бэкенды - extras: на CPU `uv sync --extra cpu --extra onnx --extra rfdetr` (любой набор из `ultralytics`, `rfdetr`, `onnx`, `grounding-dino`), на GPU - `uv sync --no-dev --extra gpu --extra ultralytics`. Профили `cpu` и `gpu` взаимоисключающие, `onnx` и группа `dev` несут onnxruntime для CPU и с `gpu` не ставятся.
+
+Тесты с маркером `model` нужны весам и в быстрый прогон не входят: `uv run pytest tests/test_model_smoke.py -q -m model` проверяет, что nano-модели на CPU находят человека, стул или стол на снимках `tests/data/smoke/` (источники - в `SOURCES.md` там же). Всегда идёт `onnx`/`rfdetr-nano` - onnxruntime есть в группе `dev`; `rfdetr`/`rfdetr-nano` и `ultralytics`/`yolo11n` - если их extra установлен. Веса скачиваются при первом прогоне в `~/.cache/objects-detector`. CI (GitHub Actions) прогоняет быстрые тесты на каждый пуш и PR, а на пуш в `dev`, `main` и тег `v*` публикует образы в `ghcr.io/nikarpoff/objects-detector` с тегами `latest` (ветка `main`), `sha-<7>` и `v<semver>` и суффиксом варианта: `latest-cpu`, `v0.1.0-cuda`. На `dev` собирается только `-cpu`.
 
 ### Устройство
 
@@ -240,8 +267,8 @@ app/
 ├── core/
 │   ├── config/             # Settings (общие и детектора), версия из pyproject.toml, константы
 │   ├── auth/               # Bearer-токен
-│   ├── backends/           # реестр бэкендов, базовый класс (decode -> detect -> postprocess), fake
-│   ├── detection/          # снимок (image), словарь (vocabulary), направление и расстояние (geometry), классы модели -> словарь (mapping)
+│   ├── backends/           # реестр, базовый класс (decode -> detect -> postprocess), fake, ultralytics, rfdetr, onnx, grounding_dino
+│   ├── detection/          # снимок (image), letterbox, словарь (vocabulary), направление и расстояние (geometry), классы модели -> словарь (mapping)
 │   ├── engine.py           # бэкенд в пуле WORKERS, очередь QUEUE_MAX, прогрев
 │   └── exceptions.py       # доменные ошибки со status_code
 └── utils/                  # lifespan, логирование, middleware X-Request-ID и Server-Timing
@@ -249,9 +276,11 @@ bench/
 ├── latency.py              # замер задержки в процессе (SVC-10, EXP-2)
 └── eval.py                 # оценка по разметке COCO (DET-7)
 configs/vocabulary.yaml     # словарь классов (DET-2)
+scripts/fetch_weights.py    # веса текущей модели заранее (DEP-6)
 tests/
 ├── contract/               # эталонные примеры из Шлюза; правятся только синхронизацией
 ├── data/eval/              # игрушечная разметка для test_eval
+├── data/smoke/             # снимки для test_model_smoke (CC0)
 └── test_*.py
 ```
 
