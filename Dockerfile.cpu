@@ -7,8 +7,9 @@ FROM python:3.12-slim
 # Install uv from the uv image
 COPY --from=uv /uv /uvx /bin/
 
+# curl for the healthcheck; libgl1 and libglib2.0-0 for OpenCV of the ultralytics and rfdetr backends
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl \
+    && apt-get install -y --no-install-recommends curl libgl1 libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
 # Set environment variables for optimal uv behavior in Docker; Python comes from the image
@@ -19,9 +20,9 @@ ENV UV_PYTHON_DOWNLOADS=never
 # Create app directory
 WORKDIR /app
 
-# Extras to install: the cpu profile and the backends. EXTRAS="" leaves the
-# fake backend only - a light image for the end-to-end check
-ARG EXTRAS="cpu"
+# Extras to install: the cpu profile and all the backends (DET-5). EXTRAS="" leaves
+# the fake backend only - a light image for the end-to-end check
+ARG EXTRAS="cpu ultralytics rfdetr onnx grounding-dino"
 
 # Install uv dependencies. One lock serves both profiles: the conflicting cpu and
 # gpu extras are resolved side by side in it, and --extra picks which one lands.

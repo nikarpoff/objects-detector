@@ -9,9 +9,10 @@ ENV UV_PYTHON_DOWNLOADS=never
 # Go to app directory
 WORKDIR /app
 
-# Extras to install: the gpu profile and the backends. EXTRAS="" leaves the
-# fake backend only
-ARG EXTRAS="gpu"
+# Extras to install: the gpu profile and all the backends (DET-5). The onnx backend
+# takes onnxruntime-gpu of the profile: the onnx extra is its CPU build and conflicts
+# with it. EXTRAS="" leaves the fake backend only
+ARG EXTRAS="gpu ultralytics rfdetr grounding-dino"
 
 # Install uv dependencies. One lock serves both profiles: the conflicting cpu and
 # gpu extras are resolved side by side in it, and --extra picks which one lands.
@@ -48,6 +49,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
        ca-certificates \
        curl \
        libgomp1 \
+       libgl1 \
+       libglib2.0-0 \
        cuda-compat-13-2 \
     && ln -sf /usr/bin/python3.12 /usr/local/bin/python3.12 \
     && ln -sf /usr/bin/python3.12 /usr/local/bin/python \
