@@ -17,6 +17,10 @@ class DETECTION_SETTINGS:
     IMGSZ = 640                         # model input side, pixels: a fixed size compiles the graph once
     MAX_PIXELS = 25_000_000             # decoded snapshot limit, ~75 MB of RGB: a 5 MB PNG may unpack to gigabytes
     MULTIPART_OVERHEAD = 64 * 1024      # multipart headers and boundaries allowed on top of MAX_IMAGE_MB
+    LETTERBOX_FILL = 114                # grey of the letterbox bars, the value the YOLO family is trained with
+    NMS_IOU = 0.7                       # boxes of one class overlapping more are one object (raw YOLO outputs)
+    MAX_DETECTIONS = 300                # detections a model gives per snapshot before the vocabulary mapping
+    TEXT_THRESHOLD = 0.25               # Grounding DINO: token score that ties a box to a prompt
 
 
 @dataclass(frozen=True)

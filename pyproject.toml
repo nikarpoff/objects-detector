@@ -31,26 +31,68 @@ dependencies = [
 # ---------------------------------------------------------------------------
 [project.optional-dependencies]
 
+# --- Profiles: the build of torch and onnxruntime -------------------
 # CPU wheels, so no CUDA payload.
 cpu = [
   "torch>=2.14.0,<2.15.0",
+  "torchvision>=0.29.0,<0.30.0",
+  "onnxruntime>=1.32.0,<2.0.0",
 ]
 
-# CUDA wheels for the GPU image.
+# CUDA wheels for the GPU image; onnxruntime-gpu brings the CUDA and TensorRT providers.
 gpu = [
+  "torch>=2.14.0,<2.15.0",
+  "torchvision>=0.29.0,<0.30.0",
+  "onnxruntime-gpu>=1.32.0,<2.0.0",
+]
+
+# --- Backends (DET-5): one extra per MODEL_BACKEND ------------------
+# AGPL-3.0, the code and the weights: optional by NFR-13.
+ultralytics = [
+  "ultralytics>=8.4.215,<9.0.0",
+  # The tokenizer of the YOLO-World and YOLOE text encoders: the Ultralytics fork of CLIP, AGPL-3.0.
+  # An archive of a commit, so the image needs no git
+  "clip @ https://github.com/ultralytics/CLIP/archive/7ffa84b3bfa40c42ecc1c77147a855e69cb2dd40.zip",
+  "torch>=2.14.0,<2.15.0",
+  "torchvision>=0.29.0,<0.30.0",
+]
+
+# Apache-2.0; the Nano, Small, Medium and Large weights too.
+rfdetr = [
+  "rfdetr>=1.12.1,<2.0.0",
+  "torch>=2.14.0,<2.15.0",
+  "torchvision>=0.29.0,<0.30.0",
+]
+
+# MIT, no torch. The CPU build: with the gpu profile onnxruntime-gpu gives the same module.
+onnx = [
+  "onnxruntime>=1.32.0,<2.0.0",
+]
+
+# Apache-2.0, the code and the weights.
+grounding-dino = [
+  "transformers>=5.23.0,<6.0.0",
   "torch>=2.14.0,<2.15.0",
 ]
 
 [dependency-groups]
 dev = [
   "pytest>=9.2.0",
+  # The model smoke test (AC-54) runs the onnx backend: MIT and no torch, so the
+  # fast environment stays light
+  "onnxruntime>=1.32.0,<2.0.0",
 ]
 
 # ---------------------------------------------------------------------------
 # uv
 # ---------------------------------------------------------------------------
 [tool.uv]
-conflicts = [[{ extra = "cpu" }, { extra = "gpu" }]]
+conflicts = [
+  [{ extra = "cpu" }, { extra = "gpu" }],
+  # onnxruntime and onnxruntime-gpu install the same module
+  [{ extra = "onnx" }, { extra = "gpu" }],
+  [{ group = "dev" }, { extra = "gpu" }],
+]
 
 [[tool.uv.index]]
 name = "pytorch-cpu"
@@ -64,6 +106,10 @@ explicit = true
 
 [tool.uv.sources]
 torch = [
+  { index = "pytorch-cpu", extra = "cpu", marker = "sys_platform != 'darwin'" },
+  { index = "pytorch-cu130", extra = "gpu", marker = "sys_platform != 'darwin'" },
+]
+torchvision = [
   { index = "pytorch-cpu", extra = "cpu", marker = "sys_platform != 'darwin'" },
   { index = "pytorch-cu130", extra = "gpu", marker = "sys_platform != 'darwin'" },
 ]

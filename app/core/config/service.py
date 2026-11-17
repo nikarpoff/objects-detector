@@ -21,6 +21,7 @@ class ServiceSettings(BaseSettings):
     # 1. Detection
     VOCABULARY_PATH: Path = Field(Path("configs/vocabulary.yaml"), description="Class vocabulary (DET-2); a relative path is taken from the service root")
     MAX_IMAGE_MB: float = Field(5, gt=0, description="Largest snapshot /v1/detect takes, MB; a larger one gets 413")
+    ONNX_TENSORRT: bool = Field(False, description="Backend onnx on cuda: try the TensorRT provider before CUDA; the first start builds the engine for minutes")
 
     # An empty variable keeps the default
     model_config = SettingsConfigDict(env_file=".env", env_ignore_empty=True, extra="ignore")
