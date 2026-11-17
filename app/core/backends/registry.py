@@ -27,10 +27,10 @@ class BackendSpec:
 # Backends of the service (DET-5); the key is the MODEL_BACKEND value
 BACKENDS: Dict[str, BackendSpec] = {
     "fake": BackendSpec("app.core.backends.fake:FakeBackend"),
-    "ultralytics": BackendSpec("app.core.backends.ultralytics:UltralyticsBackend", "ultralytics", ("ultralytics", )),
-    "rfdetr": BackendSpec("app.core.backends.rfdetr:RFDETRBackend", "rfdetr", ("rfdetr", )),
+    "ultralytics": BackendSpec("app.core.backends.ultralytics:UltralyticsBackend", "ultralytics", ("ultralytics", "torch")),
+    "rfdetr": BackendSpec("app.core.backends.rfdetr:RFDETRBackend", "rfdetr", ("rfdetr", "torch")),
     "onnx": BackendSpec("app.core.backends.onnx:OnnxBackend", "onnx", ("onnxruntime", )),
-    "grounding_dino": BackendSpec("app.core.backends.grounding_dino:GroundingDinoBackend", "grounding-dino", ("transformers", )),
+    "grounding_dino": BackendSpec("app.core.backends.grounding_dino:GroundingDinoBackend", "grounding-dino", ("transformers", "torch")),
 }
 
 

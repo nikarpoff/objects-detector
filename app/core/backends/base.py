@@ -5,9 +5,12 @@ A backend is chosen by MODEL_BACKEND, built once at startup with its weights loa
 and called from the engine worker threads only.
 """
 
+import os
+
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from functools import cached_property
+from pathlib import Path
 from typing import Any, ClassVar, Dict, FrozenSet, List, Optional, Sequence
 
 from loguru import logger
@@ -19,12 +22,26 @@ from app.core.detection.vocabulary import load_vocabulary
 from app.utils.middleware import current_timings
 
 
+WEIGHTS_CACHE_NAME = "objects-detector"         # the weights directory in the user cache when ARTIFACTS_PATH is unset
+
+
 @dataclass(frozen=True)
 class DetectionResult:
     """Objects found on a snapshot of width x height pixels"""
     width: int
     height: int
     objects: List[DetectedObject]
+
+
+def weights_dir(settings: Settings) -> Path:
+    """Where the weights live: ARTIFACTS_PATH, else the user cache; a missing file is downloaded there."""
+    root = settings.ARTIFACTS_PATH
+    if root is None:
+        cache = os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache"
+        root = Path(cache) / WEIGHTS_CACHE_NAME
+    root = root.expanduser().resolve()
+    root.mkdir(parents=True, exist_ok=True)
+    return root
 
 
 class Backend(ABC):
@@ -57,6 +74,15 @@ class Backend(ABC):
     def warmup(self) -> None:
         """An idle call on a typical input. Blocking: call it from a worker thread."""
         ...
+
+    @cached_property
+    def weights_dir(self) -> Path:
+        return weights_dir(self.settings)
+
+    @classmethod
+    def fetch(cls, settings: Settings, model: str) -> Optional[Path]:
+        """Downloads the weights of `model` without loading it, for a start without the network; where they are."""
+        return None
 
     @cached_property
     def mapping(self) -> ClassMapping:
