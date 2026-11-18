@@ -1,0 +1,19 @@
+{
+  "images": [
+    {"id": 1, "file_name": "images/room.jpg", "width": 640, "height": 480, "scene": "indoor"},
+    {"id": 2, "file_name": "images/hall.jpg", "width": 640, "height": 480, "scene": "indoor"}
+  ],
+  "categories": [
+    {"id": 1, "name": "person"},
+    {"id": 2, "name": "chair"},
+    {"id": 3, "name": "door"},
+    {"id": 4, "name": "sofa"}
+  ],
+  "annotations": [
+    {"id": 1, "image_id": 1, "category_id": 1, "bbox": [0, 0, 100, 200], "attributes": {"direction": "left", "distance": "far"}},
+    {"id": 2, "image_id": 1, "category_id": 2, "bbox": [400, 200, 100, 100], "attributes": {"direction": "right", "distance": "far"}},
+    {"id": 3, "image_id": 2, "category_id": 1, "bbox": [200, 100, 100, 300], "attributes": {"direction": "ahead", "distance": "near"}},
+    {"id": 4, "image_id": 2, "category_id": 3, "bbox": [500, 100, 100, 300], "direction": "ahead", "distance": "far"},
+    {"id": 5, "image_id": 2, "category_id": 4, "bbox": [0, 250, 200, 150], "attributes": {"direction": "left", "distance": "far"}}
+  ]
+}

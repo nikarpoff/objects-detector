@@ -1,0 +1,126 @@
+[project]
+name = "objects-detector"
+version = "0.1.0"
+description = "Обнаружение объектов на снимке для голосового ассистента незрячих"
+authors = [
+    {name = "Nikita Karpov", email = "nikita.karpov@ainergy.ru"}
+]
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  # --- API --------------------------------------------------------
+  "fastapi[standard]>=0.162.0",
+  "uvicorn[standard]>=0.54.0",
+  "python-multipart>=0.0.33,<0.1.0",
+  "pydantic>=2.14.0",
+  "pydantic-settings>=2.16.0",
+  "loguru>=0.7.3",
+
+  # --- Models -----------------------------------------------------
+  "numpy>=2.5.0",
+  "huggingface-hub>=2.4.0",
+
+  # --- Snapshots and vocabulary -----------------------------------
+  "pillow>=13.0.0",
+  "pyyaml>=6.0.3",
+]
+
+# ---------------------------------------------------------------------------
+# Profiles. The backend libraries are extras of their own (NFR-13): the
+# registry imports a backend only when it is chosen, so the service installs
+# and passes its fast tests without them.
+# ---------------------------------------------------------------------------
+[project.optional-dependencies]
+
+# --- Profiles: the build of torch and onnxruntime -------------------
+# CPU wheels, so no CUDA payload.
+cpu = [
+  "torch>=2.14.0,<2.15.0",
+  "torchvision>=0.29.0,<0.30.0",
+  "onnxruntime>=1.32.0,<2.0.0",
+]
+
+# CUDA wheels for the GPU image; onnxruntime-gpu brings the CUDA and TensorRT providers.
+gpu = [
+  "torch>=2.14.0,<2.15.0",
+  "torchvision>=0.29.0,<0.30.0",
+  "onnxruntime-gpu>=1.32.0,<2.0.0",
+]
+
+# --- Backends (DET-5): one extra per MODEL_BACKEND ------------------
+# AGPL-3.0, the code and the weights: optional by NFR-13.
+ultralytics = [
+  "ultralytics>=8.4.215,<9.0.0",
+  # The tokenizer of the YOLO-World and YOLOE text encoders: the Ultralytics fork of CLIP, AGPL-3.0.
+  # An archive of a commit, so the image needs no git
+  "clip @ https://github.com/ultralytics/CLIP/archive/7ffa84b3bfa40c42ecc1c77147a855e69cb2dd40.zip",
+  "torch>=2.14.0,<2.15.0",
+  "torchvision>=0.29.0,<0.30.0",
+]
+
+# Apache-2.0; the Nano, Small, Medium and Large weights too.
+rfdetr = [
+  "rfdetr>=1.12.1,<2.0.0",
+  "torch>=2.14.0,<2.15.0",
+  "torchvision>=0.29.0,<0.30.0",
+]
+
+# MIT, no torch. The CPU build: with the gpu profile onnxruntime-gpu gives the same module.
+onnx = [
+  "onnxruntime>=1.32.0,<2.0.0",
+]
+
+# Apache-2.0, the code and the weights.
+grounding-dino = [
+  "transformers>=5.23.0,<6.0.0",
+  "torch>=2.14.0,<2.15.0",
+]
+
+[dependency-groups]
+dev = [
+  "pytest>=9.2.0",
+  # The model smoke test (AC-54) runs the onnx backend: MIT and no torch, so the
+  # fast environment stays light
+  "onnxruntime>=1.32.0,<2.0.0",
+]
+
+# ---------------------------------------------------------------------------
+# uv
+# ---------------------------------------------------------------------------
+[tool.uv]
+conflicts = [
+  [{ extra = "cpu" }, { extra = "gpu" }],
+  # onnxruntime and onnxruntime-gpu install the same module
+  [{ extra = "onnx" }, { extra = "gpu" }],
+  [{ group = "dev" }, { extra = "gpu" }],
+]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cu130"
+url = "https://download.pytorch.org/whl/cu130"
+explicit = true
+
+[tool.uv.sources]
+torch = [
+  { index = "pytorch-cpu", extra = "cpu", marker = "sys_platform != 'darwin'" },
+  { index = "pytorch-cu130", extra = "gpu", marker = "sys_platform != 'darwin'" },
+]
+torchvision = [
+  { index = "pytorch-cpu", extra = "cpu", marker = "sys_platform != 'darwin'" },
+  { index = "pytorch-cu130", extra = "gpu", marker = "sys_platform != 'darwin'" },
+]
+
+# ---------------------------------------------------------------------------
+# pytest
+# ---------------------------------------------------------------------------
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+markers = [
+  "model: needs model weights; out of the fast run",
+]
+addopts = "--strict-markers"
